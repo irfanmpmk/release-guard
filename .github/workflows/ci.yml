@@ -94,22 +94,3 @@ jobs:
           name: smoke-report
           path: playwright-report/
 
-  publish:
-    name: Publish image
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [release-validation, monitoring-config]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Log in to GitHub Container Registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - name: Build and push
-        run: |
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
-          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" \
-            --build-arg APP_VERSION=1.0.${{ github.run_number }} \
-            --build-arg GIT_SHA=${{ github.sha }} .
-          docker push --all-tags "$IMAGE"
