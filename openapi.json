@@ -1,0 +1,164 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Clinic Bookings API",
+    "version": "1.0.0",
+    "description": "Sample service for Release Guard: doctors, slots and appointment booking."
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Liveness",
+        "responses": { "200": { "description": "Process is up", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } } }
+      }
+    },
+    "/ready": {
+      "get": {
+        "summary": "Readiness (database reachable)",
+        "responses": {
+          "200": { "description": "Ready", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } },
+          "503": { "description": "Not ready" }
+        }
+      }
+    },
+    "/version": {
+      "get": {
+        "summary": "Running release",
+        "responses": { "200": { "description": "Version", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Version" } } } } }
+      }
+    },
+    "/api/doctors": {
+      "get": {
+        "summary": "List doctors",
+        "responses": {
+          "200": { "description": "Doctors", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Doctor" } } } } }
+        }
+      }
+    },
+    "/api/slots": {
+      "get": {
+        "summary": "Bookable times of day",
+        "responses": {
+          "200": { "description": "Slots", "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string", "pattern": "^\\d{2}:\\d{2}$" } } } } }
+        }
+      }
+    },
+    "/api/appointments": {
+      "get": {
+        "summary": "List appointments",
+        "parameters": [
+          { "name": "doctorId", "in": "query", "schema": { "type": "integer" } },
+          { "name": "date", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": { "description": "Appointments", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Appointment" } } } } },
+          "400": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "summary": "Book an appointment",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AppointmentInput" } } } },
+        "responses": {
+          "201": { "description": "Booked", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Appointment" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/appointments/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+      "get": {
+        "summary": "Get an appointment",
+        "responses": {
+          "200": { "description": "Appointment", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Appointment" } } } },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "patch": {
+        "summary": "Cancel an appointment",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["status"], "properties": { "status": { "const": "cancelled" } }, "additionalProperties": false } } }
+        },
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Appointment" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "Error": { "description": "Error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    },
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "required": ["status"],
+        "properties": { "status": { "type": "string" } },
+        "additionalProperties": false
+      },
+      "Version": {
+        "type": "object",
+        "required": ["version", "commit"],
+        "properties": { "version": { "type": "string" }, "commit": { "type": "string" } },
+        "additionalProperties": false
+      },
+      "Doctor": {
+        "type": "object",
+        "required": ["id", "name", "specialty"],
+        "properties": { "id": { "type": "integer" }, "name": { "type": "string" }, "specialty": { "type": "string" } },
+        "additionalProperties": false
+      },
+      "AppointmentInput": {
+        "type": "object",
+        "required": ["doctorId", "patientName", "phone", "date", "time"],
+        "properties": {
+          "doctorId": { "type": "integer", "minimum": 1 },
+          "patientName": { "type": "string", "minLength": 2, "maxLength": 80 },
+          "phone": { "type": "string", "pattern": "^\\+?[0-9 ]{7,15}$" },
+          "date": { "type": "string", "format": "date" },
+          "time": { "type": "string", "pattern": "^\\d{2}:\\d{2}$" }
+        },
+        "additionalProperties": false
+      },
+      "Appointment": {
+        "type": "object",
+        "required": ["id", "doctorId", "patientName", "phone", "date", "time", "status", "createdAt"],
+        "properties": {
+          "id": { "type": "integer" },
+          "doctorId": { "type": "integer" },
+          "patientName": { "type": "string" },
+          "phone": { "type": "string" },
+          "date": { "type": "string", "format": "date" },
+          "time": { "type": "string", "pattern": "^\\d{2}:\\d{2}$" },
+          "status": { "enum": ["booked", "cancelled"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "details": {
+                "type": "array",
+                "items": { "type": "object", "required": ["path", "message"], "properties": { "path": { "type": "string" }, "message": { "type": "string" } } }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

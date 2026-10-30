@@ -1,0 +1,75 @@
+# Unit tests for the alert rules: promtool test rules ops/prometheus/alerts.test.yml
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 15s
+
+tests:
+  # The API stops answering scrapes at 30s; the alert fires after 1 minute.
+  - interval: 15s
+    input_series:
+      - series: 'up{job="bookings-api", instance="api:3000"}'
+        values: "1 1 0x12"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ApiDown
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: ApiDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: bookings-api
+              instance: api:3000
+            exp_annotations:
+              summary: Bookings API is not responding to scrapes
+              runbook: Check the container status and the last deploy; roll back with scripts/deploy.sh <previous image>.
+
+  # 10% of requests fail: the error-rate alert fires; 1% would not.
+  - interval: 15s
+    input_series:
+      - series: 'http_request_duration_seconds_count{job="bookings-api", route="/api/doctors", method="GET", status_code="200"}'
+        values: "0+135x40"
+      - series: 'http_request_duration_seconds_count{job="bookings-api", route="/api/doctors", method="GET", status_code="500"}'
+        values: "0+15x40"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: More than 5% of Bookings API requests are failing
+              runbook: Compare with the deploy time on the dashboard; if it started with a release, roll back.
+
+  - interval: 15s
+    input_series:
+      - series: 'http_request_duration_seconds_count{job="bookings-api", route="/api/doctors", method="GET", status_code="200"}'
+        values: "0+148x40"
+      - series: 'http_request_duration_seconds_count{job="bookings-api", route="/api/doctors", method="GET", status_code="500"}'
+        values: "0+2x40"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: HighErrorRate
+        exp_alerts: []
+
+  # Every request takes 1-2.5 s: the latency alert fires.
+  - interval: 15s
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="bookings-api", route="/api/doctors", le="0.5"}'
+        values: "0x40"
+      - series: 'http_request_duration_seconds_bucket{job="bookings-api", route="/api/doctors", le="1"}'
+        values: "0x40"
+      - series: 'http_request_duration_seconds_bucket{job="bookings-api", route="/api/doctors", le="2.5"}'
+        values: "0+10x40"
+      - series: 'http_request_duration_seconds_bucket{job="bookings-api", route="/api/doctors", le="+Inf"}'
+        values: "0+10x40"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: SlowResponses
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Bookings API p95 latency is above 500 ms
+              runbook: Check the latency panel by route, then database and host load.

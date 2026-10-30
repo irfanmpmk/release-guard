@@ -1,0 +1,44 @@
+{
+  "name": "release-guard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A small clinic Bookings API with API/contract tests, a release-validation pipeline with automatic rollback, and Prometheus/Grafana monitoring.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "jest --coverage",
+    "test:smoke": "playwright test",
+    "load": "node scripts/load.js"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "prom-client": "^15.1.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "jest": "^30.5.2",
+    "supertest": "^7.3.1"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/tests/integration/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!src/server.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "lines": 90,
+        "branches": 80
+      }
+    }
+  }
+}

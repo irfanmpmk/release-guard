@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit, integration & contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+
+  monitoring-config:
+    name: Alert rules & dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Prometheus config and rules
+        run: >
+          docker run --rm -v "$PWD/ops/prometheus:/etc/prometheus:ro" --entrypoint promtool
+          prom/prometheus:v2.53.0 check config /etc/prometheus/prometheus.yml
+      - name: Unit-test the alert rules
+        run: >
+          docker run --rm -v "$PWD/ops/prometheus:/rules:ro" -w /rules --entrypoint promtool
+          prom/prometheus:v2.53.0 test rules alerts.test.yml
+      - name: Dashboard is valid JSON
+        run: node -e "JSON.parse(require('fs').readFileSync('ops/grafana/dashboards/bookings-api.json', 'utf8'))"
+
+  release-validation:
+    name: Build, deploy & verify (with rollback drill)
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: bookings-api:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Build image
+        run: >
+          docker build -t "$IMAGE"
+          --build-arg APP_VERSION=1.0.${{ github.run_number }}
+          --build-arg GIT_SHA=${{ github.sha }} .
+
+      - name: Deploy (smoke-tested before and after the switch)
+        run: scripts/deploy.sh "$IMAGE"
+
+      - name: Rollback drill - a broken release must be rejected
+        run: |
+          echo "CHAOS_ERROR_RATE=1" > broken.env
+          if scripts/deploy.sh "$IMAGE" broken.env; then
+            echo "::error::A release failing every API call was accepted"
+            exit 1
+          fi
+          echo "Broken release rejected as expected."
+
+      - name: The good release is still live
+        run: npx playwright test
+        env:
+          BASE_URL: http://localhost:3000
+          EXPECTED_COMMIT: ${{ github.sha }}
+
+      - name: Container state
+        if: failure()
+        run: docker ps -a && docker logs bookings-api || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-report
+          path: playwright-report/
+
+  publish:
+    name: Publish image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [release-validation, monitoring-config]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build and push
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" \
+            --build-arg APP_VERSION=1.0.${{ github.run_number }} \
+            --build-arg GIT_SHA=${{ github.sha }} .
+          docker push --all-tags "$IMAGE"

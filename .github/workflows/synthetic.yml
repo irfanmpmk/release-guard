@@ -1,0 +1,27 @@
+# Runs the smoke tests against the public deployment every 30 minutes.
+# Set the repository variable PUBLIC_BASE_URL (Settings > Variables) to enable it.
+name: Synthetic check
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: vars.PUBLIC_BASE_URL != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright test
+        env:
+          BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+          LATENCY_BUDGET_MS: 1500
