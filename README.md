@@ -1,5 +1,7 @@
 # Release Guard
 
+[![CI](https://github.com/irfanmpmk/release-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/irfanmpmk/release-guard/actions/workflows/ci.yml)
+
 A small clinic **Bookings API** used to show how I test, ship and watch a service:
 
 | Area | What's here |
